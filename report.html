@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Analysis Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+
+<body>
+    <div class="nav">
+        <a href="/">Resume</a>
+        <a href="/report" class="active">Report</a>
+        <a href="/graphs">Graphs</a>
+        <button id="export-pdf" class="export-button">Export to PDF</button>
+    </div>
+    
+    <h1>Network Analysis Report</h1>
+    <p style="text-align: center;">Generated on: {{ report_timestamp }}</p>
+
+    <div class="section">
+        <h2>LAN Information</h2>
+        <div class="grid">
+            <div class="metric">
+                <div class="metric-title">IP Address</div>
+                <div class="metric-value">{{ network_info.get('IP Address', 'Unknown') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Subnet Mask</div>
+                <div class="metric-value">{{ network_info.get('Subnet Mask', 'Unknown') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Gateway</div>
+                <div class="metric-value">{{ network_info.get('Gateway', 'Unknown') }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>WLAN Information</h2>
+        <div class="grid">
+            {% for k, v in wifi_info.items() %}
+                <div class="metric">
+                    <div class="metric-title">{{ k.replace('_', ' ').title() }}</div>
+                    <div class="metric-value">{{ v }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>WAN Information</h2>
+        <div class="grid">
+            <div class="metric">
+                <div class="metric-title">Public IPv4</div>
+                <div class="metric-value">{{ connection_info.get('IPv4', 'Unknown') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Primary DNS</div>
+                <div class="metric-value">{{ connection_info.get('Primary DNS', 'Unknown') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">ISP</div>
+                <div class="metric-value">{{ connection_info.get('ISP', 'Unknown') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Location</div>
+                <div class="metric-value">{{ connection_info.get('Location', 'Unknown') }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Ping LAN</h2>
+        <div class="grid">
+            <div class="metric">
+                <div class="metric-title">Min Latency</div>
+                <div class="metric-value">{{ network_info.get('gateway_latency_min', 'N/A') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Max Latency</div>
+                <div class="metric-value">{{ network_info.get('gateway_latency_max', 'N/A') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Avg Latency</div>
+                <div class="metric-value">{{ network_info.get('gateway_latency_avg', 'N/A') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Packet Loss</div>
+                <div class="metric-value">{{ network_info.get('gateway_packet_loss', 'N/A') }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Ping WAN</h2>
+        <div class="grid">
+            {% for k, v in performance_results.items() %}
+                <div class="metric">
+                    <div class="metric-title">{{ k.title() }}</div>
+                    <div class="metric-value">{{ v }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>DNS Test Results</h2>
+        <div class="grid">
+            <div class="metric">
+                {% for dns in network_info.get('DNS Servers', []) %}    
+                    <div class="metric-title">DNS Server</div>
+                    <div class="metric-value">{{ dns }}</div>
+                {% endfor %}
+            </div>
+            <div class="metric">
+                <div class="metric-title">Port Test</div>
+                <div class="metric-value">
+                    {{ dns_results.get('Port_Test', 'Unknown') }}
+                    {% if dns_results.get('Port_Test_Error') %}
+                        ({{ dns_results.get('Port_Test_Error') }})
+                    {% endif %}
+                </div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Resolution Test</div>
+                <div class="metric-value">
+                    {{ dns_results.get('Resolution_Test', 'Unknown') }}
+                    {% if dns_results.get('Resolution_Test_Error') %}
+                        ({{ dns_results.get('Resolution_Test_Error') }})
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+ 
+    <div class="section">
+        <h2>MTR Test Results</h2>
+        <table class="mtr-table">
+            <thead>
+                <tr>
+                    <th>Hop</th>
+                    <th>Host</th>
+                    <th>Packet Loss</th>
+                    <th>Latency</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for hop in mtr_results %}
+                    <tr style="background-color: {{ hop.Color }};"> 
+                        <td>{{ hop.Hop }}</td>
+                        <td>{{ hop.Host }}</td>
+                        <td>{{ hop.Loss }}</td>
+                        <td>{{ hop.Latency }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Bandwidth Test Results</h2>
+        <div class="grid">
+            <div class="metric">
+                <div class="metric-title">Download Speed</div>
+                <div class="metric-value">{{ bandwidth_data.get('Download', 'N/A') }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-title">Upload Speed</div>
+                <div class="metric-value">{{ bandwidth_data.get('Upload', 'N/A') }}</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script>
+        // Inicializa ícones Feather
+        feather.replace();
+    </script>
+    <script>
+        document.getElementById('export-pdf').addEventListener('click', function() {
+            const element = document.body; // Exporta todo o conteúdo da página
+            const opt = {
+                margin:       1,
+                filename:     'network_report.pdf', // Nome do arquivo PDF
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 1.5 },
+                jsPDF:        { unit: 'mm', format: 'a3', orientation: 'portrait' }
+            };
+    
+            // Gera o PDF
+            html2pdf().set(opt).from(element).save();
+        });
+    </script>
+</body>
+</html>

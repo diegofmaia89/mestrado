@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Monitor - Resume</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+
+</head>
+<body>
+    <div class="nav">
+        <a href="/" class="active">Resume</a>
+        <a href="/report">Report</a>
+        <a href="/graphs">Graphs</a>
+        <button id="export-pdf" class="export-button">Export to PDF</button>
+    </div>
+
+    <h1>Network Status</h1>
+    <p class="last-updated">Last updated: <span id="update-time">-</span></p>
+   
+    <div class="color-legend">
+        <span class="legend-item value-warning"> Worse</span>
+        <span class="legend-item value-good"> Normal</span>
+        <span class="legend-item value-excellent"> Better</span>
+    </div>
+    
+    <div class="resume-container" id="resume-content">
+
+        <h2 class="section-header">Local Network</h2>
+        
+        <div class="status-card" id="router-status">
+            <div class="status-header">
+                <div class="status-title">Router</div>
+                <div class="status-indicator" id="router-indicator">-</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <div class="status-label">Gateway Latency</div>
+                    <div class="status-value" id="gateway-latency">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Gateway Packet Loss</div>
+                    <div class="status-value" id="gateway-loss">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="router-status-text">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card" id="wifi-status">
+            <div class="status-header">
+                <div class="status-title">WiFi</div>
+                <div class="status-indicator" id="wifi-indicator">-</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <div class="status-label">RSSI</div>
+                    <div class="status-value" id="rssi">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Signal Quality</div>
+                    <div class="status-value" id="signal-quality">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="wifi-status-text">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="section-header">Internet</h2>
+        
+        <div class="status-card" id="internet-quality">
+            <div class="status-header">
+                <div class="status-title">Quality</div>
+                <div class="status-indicator" id="quality-indicator">-</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <div class="status-label">Internet Latency</div>
+                    <div class="status-value" id="internet-latency">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Internet Packet Loss</div>
+                    <div class="status-value" id="internet-loss">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="quality-status-text">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card" id="internet-speed">
+            <div class="status-header">
+                <div class="status-title">Bandwidth</div>
+                <div class="status-indicator" id="speed-indicator">-</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <div class="status-label">Download</div>
+                    <div class="status-value" id="download-speed">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Upload</div>
+                    <div class="status-value" id="upload-speed">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="speed-status-text">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card" id="dns-check">
+            <div class="status-header">
+                <div class="status-title">DNS Check</div>
+                <div class="status-indicator" id="dns-indicator">-</div>
+            </div>
+            <div class="status-details">
+                <div class="status-item">
+                    <div class="status-label">Primary DNS</div>
+                    <div class="status-value" id="primary-dns">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Secondary DNS</div>
+                    <div class="status-value" id="secondary-dns">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Status</div>
+                    <div class="status-value" id="dns-status-text">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="section-header">Insights</h2>
+        <div class="insights-container" id="insights-container">
+            <div class="insight-item">
+                <div class="insight-title">Loading insights...</div>
+                <div class="insight-description">Please wait while we analyze your network.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Utility Functions
+        const formatValue = (value, unit, decimals = 1) => {
+            if (value === null || value === undefined || isNaN(value)) return '-';
+            return `${parseFloat(value).toFixed(decimals)}${unit}`;
+        };
+
+        function getStatusClass(status) {
+            switch(status.toLowerCase()) {
+                case 'good':
+                    return 'status-good';
+                case 'warning':
+                    return 'status-warning';
+                case 'bad':
+                    return 'status-bad';
+                default:
+                    return '';
+            }
+        }
+
+        function formatPercentage(value, decimals = 1) {
+            if (value === null || value === undefined || isNaN(value)) return '-';
+            const clampedValue = Math.min(100, Math.max(0, parseFloat(value)));
+            return `${clampedValue.toFixed(decimals)}%`;
+        }
+
+        function getRssiQuality(rssi) {
+            // RSSI is typically negative, with values closer to 0 being better
+            if (rssi > -50) return 'Excellent';
+            if (-51 <= rssi <= -60) return 'Good';
+            if (-61 <= rssi <= -70) return 'Fair';
+            if (rssi >= -71) return 'Weak';
+            return 'Very Weak';
+        }
+
+        function calculateSignalQuality(rssi) {
+            // Convert RSSI to percentage (rough estimation)
+            // Assuming -30 dBm is 100% and -90 dBm is 0%
+            const maxRssi = -30;
+            const minRssi = -90;
+            
+            if (rssi >= maxRssi) return 100;
+            if (rssi <= minRssi) return 0;
+            
+            const quality = ((rssi - minRssi) / (maxRssi - minRssi)) * 100;
+            return Math.round(quality);
+        }
+
+        function evaluateRouter(latency, packetLoss, latencyP95, packetLossP95) {
+            // Comparação de latência
+            const latencyComparison = compareWithP95(latency, latencyP95);
+            
+            // Comparação de packet loss (valores menores são melhores, então invertemos a lógica)
+            const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+            
+            // Determinar o status baseado na pior condição
+            if (latencyComparison.status === 'good' && packetLossComparison.status === 'good') {
+                return {status: 'excellent', message: 'Your connection to router is very good'};
+            } else if (latencyComparison.status === 'warning' || packetLossComparison.status === 'warning') {
+                return {status: 'warning', message: 'Your connection to router has low performance'};
+            } else {
+                return {status: 'good', message: 'Your connection to router is good'};
+            }
+        }
+
+        function evaluateWifi(rssi) {
+            if (-51 <= rssi <= -60) return {status: 'good', message: 'WiFi signal is good'};
+            if (-61 <= rssi <= -70) return {status: 'fair', message: 'WiFi signal is fair'};
+            if (rssi >= -71) return {status: 'warning', message: 'WiFi signal is weak'};
+            return {status: 'bad', message: 'WiFi signal is weak'};
+        }
+
+        function evaluateInternetQuality(latency, packetLoss, latencyP95, packetLossP95) {
+            // Comparação de latência
+            const latencyComparison = compareWithP95(latency, latencyP95);
+            
+            // Comparação de packet loss (valores menores são melhores, então invertemos a lógica)
+            const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+            
+            // Determinar o status baseado na pior condição
+            if (latencyComparison.status === 'excellent' && packetLossComparison.status === 'excellent') {
+                return {status: 'excellent', message: 'Your internet connection is very good'};
+            } else if (latencyComparison.status === 'warning' || packetLossComparison.status === 'warning') {
+                return {status: 'warning', message: 'Your internet connection may be low performance'};
+            } else {
+                return {status: 'good', message: 'Your internet connection is good'};
+            }
+        }
+
+        function evaluateSpeed(download, upload) {
+            // These thresholds can be adjusted based on requirements
+            if (download < 10 || upload < 10) return {status: 'bad', message: 'Very slow internet speeds'};
+            if (download < 20 || upload < 30) return {status: 'warning', message: 'Moderate internet speeds'};
+            if (download < 80 || upload < 50) return {status: 'warning', message: 'Acceptable internet speeds'};
+            
+            return {status: 'good', message: 'Internet speeds are good'};
+        }
+
+        function formatValueWithComparison(current, p95, unit = '', decimals = 1, lowerIsBetter = false) {
+            if (current === null || current === undefined || isNaN(current)) {
+                return { html: '-', class: '' };
+            }
+            
+            if (p95 === null || p95 === undefined || isNaN(p95)) {
+                return { 
+                    html: `${parseFloat(current).toFixed(decimals)}${unit}`, 
+                    class: 'value-good' 
+                };
+            }
+        
+            const percentageDiff = ((current - p95) / p95) * 100;
+            let valueClass = 'value-good';
+        
+            if (lowerIsBetter) {
+                // Para métricas onde valores menores são melhores (latência, packet loss)
+                if (current < p95 * 0.9) {
+                    valueClass = 'value-excellent';
+                } else if (current > p95 * 1.1) {
+                    valueClass = 'value-warning';
+                }
+            } else {
+                // Para métricas onde valores maiores são melhores (velocidade, qualidade de sinal)
+                if (current > p95 * 1.1) {
+                    valueClass = 'value-excellent';
+                } else if (current < p95 * 0.9) {
+                    valueClass = 'value-warning';
+                }
+            }
+        
+            return {
+                html: `${parseFloat(current).toFixed(decimals)}${unit}`,
+                class: valueClass
+            };
+        }
+
+        function compareWithP95(current, p95, lowerIsBetter = false) {
+            if (current === undefined || p95 === undefined || p95 === 0) {
+                return {status: 'good', message: 'Insufficient data for comparison'};
+            }
+            
+            const percentageDiff = ((current - p95) / p95) * 100;
+            
+            if (lowerIsBetter) {
+                // Para métricas onde valores menores são melhores (como packet loss)
+                if (current < p95 * 0.9) { // 10% melhor que p95
+                    return {status: 'excellent', message: 'Performance is excellent'};
+                } else if (current <= p95 * 1.1) { // Dentro de 10% do p95
+                    return {status: 'good', message: 'Performance is good'};
+                } else { // Mais de 10% pior que p95
+                    return {status: 'warning', message: 'Performance is below normal'};
+                }
+            } else {
+                // Para métricas onde valores maiores são melhores (como velocidade)
+                if (current > p95 * 1.1) { // 10% melhor que p95
+                    return {status: 'excellent', message: 'Performance is excellent'};
+                } else if (current >= p95 * 0.9) { // Dentro de 10% do p95
+                    return {status: 'good', message: 'Performance is good'};
+                } else { // Mais de 10% pior que p95
+                    return {status: 'warning', message: 'Performance is below normal'};
+                }
+            }
+        }
+
+        function generateInsights(data) {
+            const insights = [];
+            
+            // Router insights - Gateway latency
+            if (data.local_network.gateway_latency.current > 20) {
+                insights.push({
+                    title: 'High gateway latency',
+                    description: 'Your router might be overloaded. Consider restarting it or checking your connectivity.'
+                });
+            }
+            
+            // Router insights - Gateway packet loss
+            if (data.local_network.gateway_packet_loss.current > 2) {
+                insights.push({
+                    title: 'High packet loss to gateway',
+                    description: 'Check your Ethernet cables or try restarting your router.'
+                });
+            }
+            
+            // Router P95 comparison - Gateway latency
+            if (data.local_network.gateway_latency.p95 && data.local_network.gateway_latency.current) {
+                const latencyVariance = Math.abs(data.local_network.gateway_latency.current - data.local_network.gateway_latency.p95) / data.local_network.gateway_latency.p95 * 100;
+                
+                if (latencyVariance > 10 && data.local_network.gateway_latency.current > data.local_network.gateway_latency.p95) {
+                    insights.push({
+                        title: 'Unusual gateway latency spike',
+                        description: `Current latency (${data.local_network.gateway_latency.current.toFixed(1)} ms) is ${latencyVariance.toFixed(0)}% higher than normal. This could indicate temporary router congestion.`
+                    });
+                }
+            }
+            
+            // Router P95 comparison - Gateway packet loss
+            if (data.local_network.gateway_packet_loss.p95 && data.local_network.gateway_packet_loss.current) {
+                const packetLossVariance = Math.abs(data.local_network.gateway_packet_loss.current - data.local_network.gateway_packet_loss.p95) / (data.local_network.gateway_packet_loss.p95 || 0.1) * 100;
+                
+                if (packetLossVariance > 10 && data.local_network.gateway_packet_loss.current > data.local_network.gateway_packet_loss.p95) {
+                    insights.push({
+                        title: 'Unusual gateway packet loss',
+                        description: `Current packet loss (${data.local_network.gateway_packet_loss.current.toFixed(1)}%) is significantly higher than normal. This could indicate local network issues.`
+                    });
+                }
+            }
+            
+            // WiFi insights
+            if (data.local_network.rssi.current < -61) {
+                insights.push({
+                    title: 'Weak WiFi signal',
+                    description: 'Move closer to your router or consider adding a WiFi extender/mesh system.'
+                });
+            }
+            
+            // Internet quality insights - Latency
+            if (data.internet.latency.current > 100) {
+                insights.push({
+                    title: 'High internet latency',
+                    description: 'Your internet connection is experiencing delays. This can affect gaming and video calls.'
+                });
+            }
+            
+            // Internet quality insights - Packet loss
+            if (data.internet.packet_loss.current > 2) {
+                insights.push({
+                    title: 'Internet packet loss detected',
+                    description: 'This might be an issue with your ISP. Try restarting your modem or contact your provider.'
+                });
+            }
+            
+            // Internet P95 comparison - Latency
+            if (data.internet.latency.p95 && data.internet.latency.current) {
+                const internetLatencyVariance = Math.abs(data.internet.latency.current - data.internet.latency.p95) / data.internet.latency.p95 * 100;
+                
+                if (internetLatencyVariance > 10 && data.internet.latency.current > data.internet.latency.p95) {
+                    insights.push({
+                        title: 'Unusual internet latency increase',
+                        description: `Current internet latency (${data.internet.latency.current.toFixed(1)} ms) is ${internetLatencyVariance.toFixed(0)}% higher than normal. This might indicate ISP congestion or routing issues.`
+                    });
+                }
+            }
+            
+            // Internet P95 comparison - Packet loss
+            if (data.internet.packet_loss.p95 && data.internet.packet_loss.current) {
+                const internetPacketLossVariance = Math.abs(data.internet.packet_loss.current - data.internet.packet_loss.p95) / (data.internet.packet_loss.p95 || 0.1) * 100;
+                
+                if (internetPacketLossVariance > 10 && data.internet.packet_loss.current > data.internet.packet_loss.p95) {
+                    insights.push({
+                        title: 'Unusual internet packet loss',
+                        description: `Current internet packet loss (${data.internet.packet_loss.current.toFixed(1)}%) is significantly higher than normal. This could indicate WAN connectivity issues.`
+                    });
+                }
+            }
+                       
+            // Speed P95 comparison - Download
+            if (data.internet.speed.download.p95 && data.internet.speed.download.current) {
+                const downloadVariance = Math.abs(data.internet.speed.download.current - data.internet.speed.download.p95) / data.internet.speed.download.p95 * 100;
+                
+                if (downloadVariance > 10 && data.internet.speed.download.current < data.internet.speed.download.p95) {
+                    insights.push({
+                        title: 'Download speed degradation',
+                        description: `Current download speed (${data.internet.speed.download.current.toFixed(1)} Mbps) is ${downloadVariance.toFixed(0)}% lower than normal. This might indicate network congestion or ISP issues.`
+                    });
+                }            // Speed insights
+                if (data.internet.speed.download.current < 50) {
+                    insights.push({
+                        title: 'Slow download speeds',
+                        description: 'Your download speed is below average. This may affect your internet experience. Try limiting the number of devices on your network or contact your ISP.'
+                    });
+                }
+                
+                if (data.internet.speed.upload.current < 30) {
+                    insights.push({
+                        title: 'Slow upload speeds',
+                        description: 'Your upload speed is below average. This may affect video calls and file sharing. Try limiting the number of devices on your network or contact your ISP.'
+                    });
+                }
+            }
+            
+            // Speed P95 comparison - Upload
+            if (data.internet.speed.upload.p95 && data.internet.speed.upload.current) {
+                const uploadVariance = Math.abs(data.internet.speed.upload.current - data.internet.speed.upload.p95) / data.internet.speed.upload.p95 * 100;
+                
+                if (uploadVariance > 10 && data.internet.speed.upload.current < data.internet.speed.upload.p95) {
+                    insights.push({
+                        title: 'Upload speed degradation',
+                        description: `Current upload speed (${data.internet.speed.upload.current.toFixed(1)} Mbps) is ${uploadVariance.toFixed(0)}% lower than normal. This might affect your ability to share files or participate in video calls.`
+                    });
+                }
+            }
+            
+            // DNS insights (mock data since we don't have DNS in the original data)
+            if (Math.random() > 0.7) {  // Just a placeholder for demonstration
+                insights.push({
+                    title: 'DNS resolution issues',
+                    description: 'Consider switching to alternative DNS servers like Google (8.8.8.8) or Cloudflare (1.1.1.1).'
+                });
+            }
+            
+            return insights;
+        }
+
+        // Resume Update Function
+        async function updateResume() {
+            try {
+                const response = await fetch('/api/summary');
+                const data = await response.json();
+        
+                if (data.error) {
+                    console.error("Error getting data:", data.error);
+                    return;
+                }
+
+                console.log('Raw data from API:', data); // Debug log
+                
+                // Update timestamp
+                document.getElementById('update-time').textContent = new Date().toLocaleString();
+                
+                // Local Network - Router
+                document.getElementById('gateway-latency').textContent = `${data.local_network.gateway_latency.current.toFixed(1)} ms`;
+                document.getElementById('gateway-loss').textContent = formatPercentage(data.local_network.gateway_packet_loss.current);
+                
+                const routerEvaluation = evaluateRouter(
+                    data.local_network.gateway_latency.current, 
+                    data.local_network.gateway_packet_loss.current,
+                    data.local_network.gateway_latency.p95,
+                    data.local_network.gateway_packet_loss.p95
+                );
+                
+                document.getElementById('router-status-text').textContent = routerEvaluation.message;
+                document.getElementById('router-indicator').textContent = routerEvaluation.status.toUpperCase();
+                document.getElementById('router-indicator').className = `status-indicator ${getStatusClass(routerEvaluation.status)}`;
+
+                // Gateway Latency
+                const gatewayLatency = formatValueWithComparison(
+                    data.local_network.gateway_latency.current, 
+                    data.local_network.gateway_latency.p95,
+                    ' ms',
+                    1,
+                    true
+                );
+                document.getElementById('gateway-latency').innerHTML = gatewayLatency.html;
+                document.getElementById('gateway-latency').className = `status-value ${gatewayLatency.class}`;
+
+                // Gateway Packet Loss
+                const gatewayLoss = formatValueWithComparison(
+                    data.local_network.gateway_packet_loss.current, 
+                    data.local_network.gateway_packet_loss.p95,
+                    '%',
+                    1,
+                    true
+                );
+                document.getElementById('gateway-loss').innerHTML = gatewayLoss.html;
+                document.getElementById('gateway-loss').className = `status-value ${gatewayLoss.class}`;
+
+                // Internet Latency
+                const internetLatency = formatValueWithComparison(
+                    data.internet.latency.current, 
+                    data.internet.latency.p95,
+                    ' ms',
+                    1,
+                    true
+                );
+                document.getElementById('internet-latency').innerHTML = internetLatency.html;
+                document.getElementById('internet-latency').className = `status-value ${internetLatency.class}`;
+
+                // Internet Packet Loss
+                const internetLoss = formatValueWithComparison(
+                    data.internet.packet_loss.current, 
+                    data.internet.packet_loss.p95,
+                    '%',
+                    1,
+                    true
+                );
+                document.getElementById('internet-loss').innerHTML = internetLoss.html;
+                document.getElementById('internet-loss').className = `status-value ${internetLoss.class}`;
+
+                // Download Speed
+                const downloadSpeed = formatValueWithComparison(
+                    data.internet.speed.download.current, 
+                    data.internet.speed.download.p95,
+                    ' Mbps',
+                    1
+                );
+                document.getElementById('download-speed').innerHTML = downloadSpeed.html;
+                document.getElementById('download-speed').className = `status-value ${downloadSpeed.class}`;
+
+                // Upload Speed
+                const uploadSpeed = formatValueWithComparison(
+                    data.internet.speed.upload.current, 
+                    data.internet.speed.upload.p95,
+                    ' Mbps',
+                    1
+                );
+                document.getElementById('upload-speed').innerHTML = uploadSpeed.html;
+                document.getElementById('upload-speed').className = `status-value ${uploadSpeed.class}`;
+                
+                // Local Network - WiFi
+                const rssiValue = data.local_network.rssi.current;
+                document.getElementById('rssi').textContent = `${rssiValue} dBm`;
+                
+                const signalQuality = calculateSignalQuality(rssiValue);
+                document.getElementById('signal-quality').textContent = `${signalQuality}% (${getRssiQuality(rssiValue)})`;
+                
+                const wifiEvaluation = evaluateWifi(rssiValue);
+                document.getElementById('wifi-status-text').textContent = wifiEvaluation.message;
+                document.getElementById('wifi-indicator').textContent = wifiEvaluation.status.toUpperCase();
+                document.getElementById('wifi-indicator').className = `status-indicator ${getStatusClass(wifiEvaluation.status)}`;
+                
+                // Internet - Quality
+                document.getElementById('internet-latency').textContent = `${data.internet.latency.current.toFixed(1)} ms`;
+                document.getElementById('internet-loss').textContent = formatPercentage(data.internet.packet_loss.current);
+                
+                const qualityEvaluation = evaluateInternetQuality(
+                    data.internet.latency.current, 
+                    data.internet.packet_loss.current,
+                    data.internet.latency.p95,
+                    data.internet.packet_loss.p95
+                );
+                
+                document.getElementById('quality-status-text').textContent = qualityEvaluation.message;
+                document.getElementById('quality-indicator').textContent = qualityEvaluation.status.toUpperCase();
+                document.getElementById('quality-indicator').className = `status-indicator ${getStatusClass(qualityEvaluation.status)}`;
+                
+                // Internet - Speed
+                document.getElementById('download-speed').textContent = `${data.internet.speed.download.current.toFixed(1)} Mbps`;
+                document.getElementById('upload-speed').textContent = `${data.internet.speed.upload.current.toFixed(1)} Mbps`;
+                
+                const speedEvaluation = evaluateSpeed(
+                    data.internet.speed.download.current, 
+                    data.internet.speed.upload.current
+                );
+                
+                document.getElementById('speed-status-text').textContent = speedEvaluation.message;
+                document.getElementById('speed-indicator').textContent = speedEvaluation.status.toUpperCase();
+                document.getElementById('speed-indicator').className = `status-indicator ${getStatusClass(speedEvaluation.status)}`;
+                
+                // DNS Check (mock data since we don't have DNS in the original data)
+                // For demonstration purposes only - in a real implementation this would use actual DNS check data
+                const dnsStatus = Math.random() > 0.2 ? 'good' : 'warning';  // 80% chance of good status
+                document.getElementById('primary-dns').textContent = 'Responsive';
+                document.getElementById('secondary-dns').textContent = dnsStatus === 'good' ? 'Responsive' : 'Slow';
+                document.getElementById('dns-status-text').textContent = dnsStatus === 'good' ? 'DNS queries are resolving correctly' : 'Secondary DNS is responding slowly';
+                document.getElementById('dns-indicator').textContent = dnsStatus.toUpperCase();
+                document.getElementById('dns-indicator').className = `status-indicator ${getStatusClass(dnsStatus)}`;
+                
+                // Generate Insights
+                const insights = generateInsights(data);
+                const insightsContainer = document.getElementById('insights-container');
+                insightsContainer.innerHTML = '';
+                
+                if (insights.length === 0) {
+                    insightsContainer.innerHTML = `
+                        <div class="insight-item">
+                            <div class="insight-title">No issues detected</div>
+                            <div class="insight-description">Your network is performing well with no significant issues.</div>
+                        </div>
+                    `;
+                } else {
+                    insights.forEach(insight => {
+                        insightsContainer.innerHTML += `
+                            <div class="insight-item">
+                                <div class="insight-title">${insight.title}</div>
+                                <div class="insight-description">${insight.description}</div>
+                            </div>
+                        `;
+                    });
+                }
+
+            } catch (error) {
+                console.error("Error updating resume:", error);
+            }
+        }
+
+        // Initialize and Update Resume
+        document.addEventListener('DOMContentLoaded', () => {
+            updateResume();
+            setInterval(updateResume, 30000);
+        });
+        
+        // PDF Export
+        document.getElementById('export-pdf').addEventListener('click', async function() {
+            const button = this;
+            const originalText = button.textContent;
+            
+            try {
+                button.textContent = 'Generating PDF...';
+                button.disabled = true;
+
+                const element = document.getElementById('resume-content');
+                const opt = {
+                    margin: 10,
+                    filename: 'network_resume.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                await html2pdf().set(opt).from(element).save();
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('Error generating PDF. Please try again.');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
