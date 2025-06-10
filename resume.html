@@ -62,6 +62,10 @@
                     <div class="status-value" id="rssi">-</div>
                 </div>
                 <div class="status-item">
+                    <div class="status-label">Adapter</div>
+                    <div class="status-value" id="ieee-standard">-</div>
+                </div>
+                <div class="status-item">
                     <div class="status-label">Signal Quality</div>
                     <div class="status-value" id="signal-quality">-</div>
                 </div>
@@ -155,14 +159,18 @@
 
         function getStatusClass(status) {
             switch(status.toLowerCase()) {
+                case 'excellent':
+                    return 'status-excellent';
                 case 'good':
                     return 'status-good';
                 case 'warning':
+                case 'fair':
                     return 'status-warning';
                 case 'bad':
+                case 'weak':
                     return 'status-bad';
                 default:
-                    return '';
+                    return 'status-good';
             }
         }
 
@@ -173,17 +181,16 @@
         }
 
         function getRssiQuality(rssi) {
-            // RSSI is typically negative, with values closer to 0 being better
-            if (rssi > -50) return 'Excellent';
-            if (-51 <= rssi <= -60) return 'Good';
-            if (-61 <= rssi <= -70) return 'Fair';
-            if (rssi >= -71) return 'Weak';
+            // RSSI é tipicamente negativo, valores mais próximos de 0 são melhores
+            if (rssi >= -50) return 'Excellent';
+            if (rssi >= -60) return 'Good';
+            if (rssi >= -70) return 'Fair';
+            if (rssi >= -80) return 'Weak';
             return 'Very Weak';
         }
 
         function calculateSignalQuality(rssi) {
-            // Convert RSSI to percentage (rough estimation)
-            // Assuming -30 dBm is 100% and -90 dBm is 0%
+            // Converte RSSI para porcentagem
             const maxRssi = -30;
             const minRssi = -90;
             
@@ -195,53 +202,238 @@
         }
 
         function evaluateRouter(latency, packetLoss, latencyP95, packetLossP95) {
-            // Comparação de latência
-            const latencyComparison = compareWithP95(latency, latencyP95);
+            // Avaliação baseada em valores absolutos primeiro
+            let latencyStatus = 'good';
+            let packetLossStatus = 'good';
             
-            // Comparação de packet loss (valores menores são melhores, então invertemos a lógica)
-            const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+            // Avaliação da latência (valores absolutos)
+            if (latency > 50) {
+                latencyStatus = 'bad';
+            } else if (latency > 20) {
+                latencyStatus = 'warning';
+            } else if (latency <= 5) {
+                latencyStatus = 'excellent';
+            }
             
-            // Determinar o status baseado na pior condição
-            if (latencyComparison.status === 'good' && packetLossComparison.status === 'good') {
-                return {status: 'excellent', message: 'Your connection to router is very good'};
-            } else if (latencyComparison.status === 'warning' || packetLossComparison.status === 'warning') {
-                return {status: 'warning', message: 'Your connection to router has low performance'};
-            } else {
-                return {status: 'good', message: 'Your connection to router is good'};
+            // Avaliação da perda de pacotes (valores absolutos)
+            if (packetLoss > 5) {
+                packetLossStatus = 'bad';
+            } else if (packetLoss > 1) {
+                packetLossStatus = 'warning';
+            } else if (packetLoss <= 0.1) {
+                packetLossStatus = 'excellent';
+            }
+            
+            // Se temos dados históricos (P95), também consideramos a comparação
+            if (latencyP95 && latencyP95 > 0) {
+                const latencyComparison = compareWithP95(latency, latencyP95, true);
+                // Se a comparação é pior que a avaliação absoluta, use a pior
+                if (latencyComparison.status === 'warning' && (latencyStatus === 'good' || latencyStatus === 'excellent')) {
+                    latencyStatus = 'warning';
+                }
+            }
+            
+            if (packetLossP95 !== undefined && packetLossP95 >= 0) {
+                const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+                // Se a comparação é pior que a avaliação absoluta, use a pior
+                if (packetLossComparison.status === 'warning' && (packetLossStatus === 'good' || packetLossStatus === 'excellent')) {
+                    packetLossStatus = 'warning';
+                }
+            }
+            
+            // Determinar o status final baseado na pior condição
+            const statusPriority = { 'bad': 4, 'warning': 3, 'good': 2, 'excellent': 1 };
+            const worstStatus = [latencyStatus, packetLossStatus].reduce((worst, current) => 
+                statusPriority[current] > statusPriority[worst] ? current : worst
+            );
+            
+            // Retornar status e mensagem apropriados
+            switch (worstStatus) {
+                case 'bad':
+                    return {
+                        status: 'bad', 
+                        message: `Router connection has issues (${latency.toFixed(1)}ms, ${packetLoss.toFixed(1)}% loss)`
+                    };
+                case 'warning':
+                    return {
+                        status: 'warning', 
+                        message: `Router connection has reduced performance`
+                    };
+                case 'excellent':
+                    return {
+                        status: 'excellent', 
+                        message: `Router connection is excellent`
+                    };
+                default:
+                    return {
+                        status: 'good', 
+                        message: `Router connection is good`
+                    };
             }
         }
 
         function evaluateWifi(rssi) {
-            if (-51 <= rssi <= -60) return {status: 'good', message: 'WiFi signal is good'};
-            if (-61 <= rssi <= -70) return {status: 'fair', message: 'WiFi signal is fair'};
-            if (rssi >= -71) return {status: 'warning', message: 'WiFi signal is weak'};
-            return {status: 'bad', message: 'WiFi signal is weak'};
+            if (rssi >= -50) return {status: 'excellent', message: 'WiFi signal is excellent'};
+            if (rssi >= -60) return {status: 'good', message: 'WiFi signal is good'};
+            if (rssi >= -70) return {status: 'warning', message: 'WiFi signal is fair'};
+            if (rssi >= -80) return {status: 'warning', message: 'WiFi signal is weak'};
+            return {status: 'bad', message: 'WiFi signal is very weak'};
         }
 
         function evaluateInternetQuality(latency, packetLoss, latencyP95, packetLossP95) {
-            // Comparação de latência
-            const latencyComparison = compareWithP95(latency, latencyP95);
+            // Avaliação baseada em valores absolutos primeiro
+            let latencyStatus = 'good';
+            let packetLossStatus = 'good';
             
-            // Comparação de packet loss (valores menores são melhores, então invertemos a lógica)
-            const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+            // Avaliação da latência (valores absolutos)
+            if (latency > 150) {
+                latencyStatus = 'bad';
+            } else if (latency > 100) {
+                latencyStatus = 'warning';
+            } else if (latency <= 30) {
+                latencyStatus = 'excellent';
+            }
             
-            // Determinar o status baseado na pior condição
-            if (latencyComparison.status === 'excellent' && packetLossComparison.status === 'excellent') {
-                return {status: 'excellent', message: 'Your internet connection is very good'};
-            } else if (latencyComparison.status === 'warning' || packetLossComparison.status === 'warning') {
-                return {status: 'warning', message: 'Your internet connection may be low performance'};
-            } else {
-                return {status: 'good', message: 'Your internet connection is good'};
+            // Avaliação da perda de pacotes (valores absolutos)
+            if (packetLoss > 3) {
+                packetLossStatus = 'bad';
+            } else if (packetLoss > 1) {
+                packetLossStatus = 'warning';
+            } else if (packetLoss <= 0.1) {
+                packetLossStatus = 'excellent';
+            }
+            
+            // Se temos dados históricos (P95), também consideramos a comparação
+            if (latencyP95 && latencyP95 > 0) {
+                const latencyComparison = compareWithP95(latency, latencyP95, true);
+                if (latencyComparison.status === 'warning' && (latencyStatus === 'good' || latencyStatus === 'excellent')) {
+                    latencyStatus = 'warning';
+                }
+            }
+            
+            if (packetLossP95 !== undefined && packetLossP95 >= 0) {
+                const packetLossComparison = compareWithP95(packetLoss, packetLossP95, true);
+                if (packetLossComparison.status === 'warning' && (packetLossStatus === 'good' || packetLossStatus === 'excellent')) {
+                    packetLossStatus = 'warning';
+                }
+            }
+            
+            // Determinar o status final baseado na pior condição
+            const statusPriority = { 'bad': 4, 'warning': 3, 'good': 2, 'excellent': 1 };
+            const worstStatus = [latencyStatus, packetLossStatus].reduce((worst, current) => 
+                statusPriority[current] > statusPriority[worst] ? current : worst
+            );
+            
+            switch (worstStatus) {
+                case 'bad':
+                    return {status: 'bad', message: 'Internet connection has serious issues'};
+                case 'warning':
+                    return {status: 'warning', message: 'Internet connection may have performance issues'};
+                case 'excellent':
+                    return {status: 'excellent', message: 'Internet connection is excellent'};
+                default:
+                    return {status: 'good', message: 'Internet connection is good'};
             }
         }
 
-        function evaluateSpeed(download, upload) {
-            // These thresholds can be adjusted based on requirements
-            if (download < 10 || upload < 10) return {status: 'bad', message: 'Very slow internet speeds'};
-            if (download < 20 || upload < 30) return {status: 'warning', message: 'Moderate internet speeds'};
-            if (download < 80 || upload < 50) return {status: 'warning', message: 'Acceptable internet speeds'};
+        // Função para determinar a classe de cor do RSSI baseada na qualidade
+        function getRssiColorClass(rssi) {
+            if (rssi >= -50) return 'value-excellent'; 
+            if (rssi >= -60) return 'value-good';      
+            if (rssi >= -70) return 'value-good';      
+            return 'value-warning';                     
+        }
+
+        function getIeeeStandard(data) {
+            // Verifica caminhos mais comuns primeiro
+            if (data.local_network?.ieee_standard) {
+                return data.local_network.ieee_standard;
+            }
+            if (data.local_network?.wifi_info?.ieee_standard) {
+                return data.local_network.wifi_info.ieee_standard;
+            }
+            if (data.ieee_standard_info?.standard) {
+                return data.ieee_standard_info.standard;
+            }
             
-            return {status: 'good', message: 'Internet speeds are good'};
+            // Busca em qualquer lugar do objeto
+            const findStandard = (obj) => {
+                for (const key in obj) {
+                    if (typeof obj[key] === 'string' && 
+                        (obj[key].includes('802.11') || /^(ac|ax|be|n|g|a|b)$/i.test(obj[key]))) {
+                        return obj[key];
+                    }
+                    if (typeof obj[key] === 'object') {
+                        const found = findStandard(obj[key]);
+                        if (found) return found;
+                    }
+                }
+                return 'Unknown';
+            };
+            
+            return findStandard(data);
+        }            
+                    
+        function getIeeeColorClass(standard) {
+            const standardLower = standard.toLowerCase();
+            
+            if (standardLower.includes('802.11a') || 
+                standardLower.includes('802.11b') || 
+                standardLower.includes('802.11g') || 
+                standardLower.includes('802.11n')) {
+                return 'value-warning';
+            }
+            
+            if (standardLower.includes('802.11ac') || 
+                standardLower.includes('802.11ax') || 
+                standardLower.includes('802.11be') ||
+                standardLower.includes('wifi 6') ||
+                standardLower.includes('wifi 7')) {
+                return 'value-excellent';
+            }
+            
+            return 'value-good';
+        }
+
+        function evaluateSpeed(download, upload) {
+            // Avaliação baseada em thresholds realistas
+            let downloadStatus = 'good';
+            let uploadStatus = 'good';
+            
+            // Download speed evaluation
+            if (download < 10) {
+                downloadStatus = 'bad';
+            } else if (download < 25) {
+                downloadStatus = 'warning';
+            } else if (download >= 100) {
+                downloadStatus = 'excellent';
+            }
+            
+            // Upload speed evaluation
+            if (upload < 5) {
+                uploadStatus = 'bad';
+            } else if (upload < 10) {
+                uploadStatus = 'warning';
+            } else if (upload >= 50) {
+                uploadStatus = 'excellent';
+            }
+            
+            // Status final baseado na pior condição
+            const statusPriority = { 'bad': 4, 'warning': 3, 'good': 2, 'excellent': 1 };
+            const worstStatus = [downloadStatus, uploadStatus].reduce((worst, current) => 
+                statusPriority[current] > statusPriority[worst] ? current : worst
+            );
+            
+            switch (worstStatus) {
+                case 'bad':
+                    return {status: 'bad', message: 'Internet speeds are very slow'};
+                case 'warning':
+                    return {status: 'warning', message: 'Internet speeds are below average'};
+                case 'excellent':
+                    return {status: 'excellent', message: 'Internet speeds are excellent'};
+                default:
+                    return {status: 'good', message: 'Internet speeds are good'};
+            }
         }
 
         function formatValueWithComparison(current, p95, unit = '', decimals = 1, lowerIsBetter = false) {
@@ -256,21 +448,20 @@
                 };
             }
         
-            const percentageDiff = ((current - p95) / p95) * 100;
             let valueClass = 'value-good';
         
             if (lowerIsBetter) {
                 // Para métricas onde valores menores são melhores (latência, packet loss)
-                if (current < p95 * 0.9) {
+                if (current <= p95 * 0.8) {
                     valueClass = 'value-excellent';
-                } else if (current > p95 * 1.1) {
+                } else if (current >= p95 * 1.2) {
                     valueClass = 'value-warning';
                 }
             } else {
                 // Para métricas onde valores maiores são melhores (velocidade, qualidade de sinal)
-                if (current > p95 * 1.1) {
+                if (current >= p95 * 1.2) {
                     valueClass = 'value-excellent';
-                } else if (current < p95 * 0.9) {
+                } else if (current <= p95 * 0.8) {
                     valueClass = 'value-warning';
                 }
             }
@@ -286,24 +477,22 @@
                 return {status: 'good', message: 'Insufficient data for comparison'};
             }
             
-            const percentageDiff = ((current - p95) / p95) * 100;
-            
             if (lowerIsBetter) {
-                // Para métricas onde valores menores são melhores (como packet loss)
-                if (current < p95 * 0.9) { // 10% melhor que p95
+                // Para métricas onde valores menores são melhores
+                if (current <= p95 * 0.8) { // 20% melhor que p95
                     return {status: 'excellent', message: 'Performance is excellent'};
-                } else if (current <= p95 * 1.1) { // Dentro de 10% do p95
+                } else if (current <= p95 * 1.2) { // Dentro de 20% do p95
                     return {status: 'good', message: 'Performance is good'};
-                } else { // Mais de 10% pior que p95
+                } else { // Mais de 20% pior que p95
                     return {status: 'warning', message: 'Performance is below normal'};
                 }
             } else {
-                // Para métricas onde valores maiores são melhores (como velocidade)
-                if (current > p95 * 1.1) { // 10% melhor que p95
+                // Para métricas onde valores maiores são melhores
+                if (current >= p95 * 1.2) { // 20% melhor que p95
                     return {status: 'excellent', message: 'Performance is excellent'};
-                } else if (current >= p95 * 0.9) { // Dentro de 10% do p95
+                } else if (current >= p95 * 0.8) { // Dentro de 20% do p95
                     return {status: 'good', message: 'Performance is good'};
-                } else { // Mais de 10% pior que p95
+                } else { // Mais de 20% pior que p95
                     return {status: 'warning', message: 'Performance is below normal'};
                 }
             }
@@ -357,6 +546,15 @@
                 insights.push({
                     title: 'Weak WiFi signal',
                     description: 'Move closer to your router or consider adding a WiFi extender/mesh system.'
+                });
+            }
+
+            // Interface adapter
+            const standard = getIeeeStandard(data);
+            if (standard && /802\.11(a|b|g|n)/i.test(standard)) {
+                insights.push({
+                    title: 'Obsolete network adapter',
+                    description: `Your adapter is using the older ${standard} standard. For better performance, consider upgrading to a WiFi 5 (802.11ac) or WiFi 6 (802.11ax) adapter.`
                 });
             }
             
@@ -545,16 +743,31 @@
                 
                 // Local Network - WiFi
                 const rssiValue = data.local_network.rssi.current;
-                document.getElementById('rssi').textContent = `${rssiValue} dBm`;
-                
-                const signalQuality = calculateSignalQuality(rssiValue);
-                document.getElementById('signal-quality').textContent = `${signalQuality}% (${getRssiQuality(rssiValue)})`;
-                
+                const rssiQuality = getRssiQuality(rssiValue);  // Obtém o status textual ("Excelente", "Bom", etc.)
+                const signalQualityPercent = calculateSignalQuality(rssiValue);
+
+                // Atualiza RSSI com cor e valor
+                document.getElementById('rssi').innerHTML = 
+                    `<span class="${getRssiColorClass(rssiValue)}">${rssiValue} dBm</span>`;
+
+                // Atualiza Signal Quality com cor, valor e status textual
+                document.getElementById('signal-quality').innerHTML = 
+                    `<span class="${getRssiColorClass(rssiValue)}">
+                        ${signalQualityPercent}% (${rssiQuality})
+                    </span>`;
+
+                // Atualiza o status geral do WiFi (já existente)
                 const wifiEvaluation = evaluateWifi(rssiValue);
                 document.getElementById('wifi-status-text').textContent = wifiEvaluation.message;
                 document.getElementById('wifi-indicator').textContent = wifiEvaluation.status.toUpperCase();
                 document.getElementById('wifi-indicator').className = `status-indicator ${getStatusClass(wifiEvaluation.status)}`;
-                
+
+                // IEEE standard adapter
+                const standard = getIeeeStandard(data);
+                const ieeeClass = getIeeeColorClass(standard);
+                document.getElementById('ieee-standard').innerHTML = `<span class="${ieeeClass}">${standard}</span>`;
+
+
                 // Internet - Quality
                 document.getElementById('internet-latency').textContent = `${data.internet.latency.current.toFixed(1)} ms`;
                 document.getElementById('internet-loss').textContent = formatPercentage(data.internet.packet_loss.current);
