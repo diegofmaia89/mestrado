@@ -17,7 +17,7 @@ fi
 
 echo ""
 echo "=== Executando Dashboard ==="
-python3 /home/diego/Documentos/Mestrado/Dissertação/dashboard.py > /dev/null 2>&1 &
+python3 <"diretório local do arquivo dashboard.py"> > /dev/null 2>&1 &
 DASHBOARD_PID=$!
 echo "✓ Dashboard iniciado (PID: $DASHBOARD_PID)"
 
@@ -27,7 +27,7 @@ sleep 3
 echo ""
 echo "=== Executando Network Analyzer ==="
 echo "-------------------------------------------"
-python3 /home/diego/Documentos/Mestrado/Dissertação/network_analyzer.py
+python3 <"diretório local do arquivo network_analyzer.py">
 NETWORK_PID=$!
 echo ""
 echo "=== Ambos os processos estão rodando ==="
