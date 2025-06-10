@@ -182,9 +182,75 @@ class WifiAnalyzer:
                 "Signal Quality": "Unknown"
             }
 
+    def get_ieee_standard(self):
+        """
+        Identifica o padrão IEEE 802.11 da conexão atual do adaptador wireless
+        """
+        try:
+            # Obter a interface wireless
+            iw_output = subprocess.getoutput("iwconfig 2>/dev/null | grep -o '^[[:alnum:]]*'")
+            if not iw_output:
+                return {"error": "No wireless interface found"}
+            
+            interface = iw_output.split('\n')[0].strip()
+            
+            # Verificar se há conexão ativa
+            iw_link = subprocess.getoutput(f"iw dev {interface} link")
+            if not iw_link or "Connected to" not in iw_link:
+                return {"error": "No active connection"}
+            
+            # Obter capacidades do adaptador para determinar o padrão
+            iw_list = subprocess.getoutput(f"iw list")
+            if not iw_list:
+                return {"error": "Unable to get adapter capabilities"}
+            
+            # Verificar suporte aos padrões
+            he_support = "HE capabilities" in iw_list or "HE PHY" in iw_list
+            vht_support = "VHT capabilities" in iw_list or "VHT80" in iw_list
+            ht_support = "HT capabilities" in iw_list or "HT20" in iw_list
+            
+            # Extrair frequência da conexão atual
+            freq_match = re.search(r'freq: (\d+)', iw_link)
+            if not freq_match:
+                return {"error": "Unable to determine connection frequency"}
+            
+            current_freq = int(freq_match.group(1))
+            
+            # Determinar banda atual
+            if 2400 <= current_freq <= 2500:
+                current_band = "2.4 GHz"
+            elif 5000 <= current_freq <= 6000:
+                current_band = "5 GHz"
+            elif 5900 <= current_freq <= 7100:
+                current_band = "6 GHz"
+            else:
+                current_band = "Unknown"
+            
+            # Determinar padrão atual baseado nas capacidades e banda
+            if he_support and current_band == "6 GHz":
+                current_standard = "802.11ax (WiFi 6E)"
+            elif he_support:
+                current_standard = "802.11ax (WiFi 6)"
+            elif vht_support and current_band == "5 GHz":
+                current_standard = "802.11ac (WiFi 5)"
+            elif ht_support:
+                current_standard = "802.11n (WiFi 4)"
+            elif current_band == "5 GHz":
+                current_standard = "802.11a"
+            elif current_band == "2.4 GHz":
+                current_standard = "802.11g"
+            else:
+                current_standard = "Unknown"
+            
+            return {"interface standard": current_standard}
+            
+        except Exception as e:
+            return {"error": f"Error detecting IEEE standard: {str(e)}"}
+            
+            
 class NetworkPerformanceTester:
     def test_gateway_ping(self):
-        #Test ping to local gateway
+        """Test ping to local gateway"""
         try:
             # Get the default gateway from network info
             network_analyzer = NetworkAnalyzer()
@@ -198,17 +264,58 @@ class NetworkPerformanceTester:
             
             # Run ping test to gateway
             stdout = subprocess.getoutput(f"ping -c 300 -i 0.1 {gateway}")
+            
+            # Extract ping times
             times = [float(m.group(1)) for m in re.finditer(r'time=(\d+\.?\d*)', stdout)]
-            packet_loss_match = re.search(r'(\d+)% packet loss', stdout)
-            packet_loss = int(packet_loss_match.group(1)) if packet_loss_match else None
+            
+            # Extract packet loss with improved regex and validation
+            packet_loss = None
+            
+            # Look for the statistics line that contains packet loss information
+            # This regex looks for the pattern "X packets transmitted, Y received, Z% packet loss"
+            stats_match = re.search(r'(\d+) packets transmitted,\s*(\d+) (?:received|packets received),.*?(\d+(?:\.\d+)?)% packet loss', stdout)
+            
+            if stats_match:
+                transmitted = int(stats_match.group(1))
+                received = int(stats_match.group(2))
+                reported_loss = float(stats_match.group(3))
+                
+                # Calculate actual packet loss to validate
+                if transmitted > 0:
+                    calculated_loss = ((transmitted - received) / transmitted) * 100
+                    
+                    # Use the calculated value if it's reasonable, otherwise cap at 100%
+                    if 0 <= calculated_loss <= 100:
+                        packet_loss = calculated_loss
+                    elif reported_loss <= 100:
+                        packet_loss = reported_loss
+                    else:
+                        # If both values are problematic, calculate from the data we have
+                        packet_loss = min(calculated_loss, 100.0)
+                else:
+                    packet_loss = 0
+            else:
+                # Fallback: try the original regex but cap at 100%
+                packet_loss_match = re.search(r'(\d+(?:\.\d+)?)% packet loss', stdout)
+                if packet_loss_match:
+                    raw_loss = float(packet_loss_match.group(1))
+                    packet_loss = min(raw_loss, 100.0)  # Cap at 100%
+            
+            # Ensure packet_loss is not None and is within valid range
+            if packet_loss is None:
+                packet_loss = 0  # Default to 0 if we can't determine packet loss
+            
+            # Final validation: ensure packet loss is between 0 and 100
+            packet_loss = max(0.0, min(packet_loss, 100.0))
             
             return {
                 'Gateway': gateway,
-                'Min ': f"{min(times):.2f} ms" if times else "N/A",
+                'Min': f"{min(times):.2f} ms" if times else "N/A",
                 'Max': f"{max(times):.2f} ms" if times else "N/A",
                 'Avg': f"{statistics.mean(times):.2f} ms" if times else "N/A",
-                'Packet Loss': f"{packet_loss} %" if packet_loss is not None else "N/A",
+                'Packet Loss': f"{packet_loss:.1f} %" if packet_loss is not None else "N/A",
             }
+            
         except Exception as e:
             print(f"Error in gateway ping test: {e}")
             return None    
@@ -272,17 +379,60 @@ class NetworkPerformanceTester:
         return results
 
     def test_ping(self, count=300, interval=0.1):
+        """Test ping to Google DNS with improved packet loss validation"""
         try:
             stdout = subprocess.getoutput(f"ping -c {count} -i {interval} {self.google_dns}")
+            
+            # Extract ping times
             times = [float(m.group(1)) for m in re.finditer(r'time=(\d+\.?\d*)', stdout)]
-            packet_loss_match = re.search(r'(\d+)% packet loss', stdout)
-            packet_loss = int(packet_loss_match.group(1)) if packet_loss_match else None
+            
+            # Extract packet loss with improved regex and validation
+            packet_loss = None
+            
+            # Look for the statistics line that contains packet loss information
+            # This regex looks for the pattern "X packets transmitted, Y received, Z% packet loss"
+            stats_match = re.search(r'(\d+) packets transmitted,\s*(\d+) (?:received|packets received),.*?(\d+(?:\.\d+)?)% packet loss', stdout)
+            
+            if stats_match:
+                transmitted = int(stats_match.group(1))
+                received = int(stats_match.group(2))
+                reported_loss = float(stats_match.group(3))
+                
+                # Calculate actual packet loss to validate
+                if transmitted > 0:
+                    calculated_loss = ((transmitted - received) / transmitted) * 100
+                    
+                    # Use the calculated value if it's reasonable, otherwise cap at 100%
+                    if 0 <= calculated_loss <= 100:
+                        packet_loss = calculated_loss
+                    elif reported_loss <= 100:
+                        packet_loss = reported_loss
+                    else:
+                        # If both values are problematic, calculate from the data we have
+                        packet_loss = min(calculated_loss, 100.0)
+                else:
+                    packet_loss = 0
+            else:
+                # Fallback: try the original regex but cap at 100%
+                packet_loss_match = re.search(r'(\d+(?:\.\d+)?)% packet loss', stdout)
+                if packet_loss_match:
+                    raw_loss = float(packet_loss_match.group(1))
+                    packet_loss = min(raw_loss, 100.0)  # Cap at 100%
+            
+            # Ensure packet_loss is not None and is within valid range
+            if packet_loss is None:
+                packet_loss = 0  # Default to 0 if we can't determine packet loss
+            
+            # Final validation: ensure packet loss is between 0 and 100
+            packet_loss = max(0.0, min(packet_loss, 100.0))
+            
             return {
-                'Min': f"{min(times):.2f} ms",
-                'Max': f"{max(times):.2f} ms",
-                'Avg': f"{statistics.mean(times):.2f} ms",
-                'Packet Loss': f"{packet_loss} %",
+                'Min': f"{min(times):.2f} ms" if times else "N/A",
+                'Max': f"{max(times):.2f} ms" if times else "N/A", 
+                'Avg': f"{statistics.mean(times):.2f} ms" if times else "N/A",
+                'Packet Loss': f"{packet_loss:.1f} %",
             } if times else None
+            
         except Exception as e:
             print(f"Error in ping test: {e}")
             return None
@@ -420,8 +570,9 @@ class HTMLExporter:
     def format_for_dashboard(
         network_info: Dict[str, Any],
         wifi_info: Dict[str, Any],
+        ieee_standard_info: Dict[str, Any],  # Corrigido: posição do parâmetro
         performance_results: Dict[str, Any],
-        gateway_ping_results: Dict[str,Any],
+        gateway_ping_results: Dict[str, Any],
         mtr_results: list,
         bandwidth_results: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -444,10 +595,27 @@ class HTMLExporter:
             }
         }
         
+        formatted_ieee_info = {}
+        if ieee_standard_info and not ieee_standard_info.get('error'):
+            formatted_ieee_info = {
+                'interface': ieee_standard_info.get('interface', 'Unknown'),
+                'highest_standard': ieee_standard_info.get('highest_standard', 'Unknown'),
+                'supported_standards': ieee_standard_info.get('supported_standards', []),
+                'supported_bands': ieee_standard_info.get('supported_bands', {}),
+                'supported_channel_widths': ieee_standard_info.get('supported_channel_widths', []),
+                'current_connection': ieee_standard_info.get('current_connection', {}),
+                'capabilities': ieee_standard_info.get('capabilities', {})
+            }
+        else:
+            formatted_ieee_info = {
+                'error': ieee_standard_info.get('error', 'Unable to detect IEEE standard') if ieee_standard_info else 'IEEE standard info not available'
+            }
+        
         return {
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'network_info': network_info,
             'wifi_info': wifi_info,
+            'ieee_standard_info': formatted_ieee_info,
             'performance_results': performance_results,
             'gateway_ping_results': gateway_ping_results,
             'mtr_results': mtr_results,
@@ -490,12 +658,16 @@ def execute_main_code():
     # Obter informações da rede
     network_info = analyzer.get_network_info()
     wifi_info = wifi_analyzer.get_connected_wifi_info()
+    
+    # NOVO: Obter informações do padrão IEEE 802.11
+    ieee_standard_info = wifi_analyzer.get_ieee_standard()  # Corrigido para wifi_analyzer
 
     # Consolidar resultados
     results = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "network_info": network_info,
         "wifi_info": wifi_info,
+        "ieee_standard_info": ieee_standard_info,
         "performance_results": performance_results,
         "gateway_ping_results": gateway_ping_results,
         "mtr_results": mtr_results,
@@ -507,7 +679,7 @@ def execute_main_code():
 
     # Formatar os resultados para o dashboard
     formatted_results = HTMLExporter.format_for_dashboard(
-        network_info, wifi_info, performance_results, gateway_ping_results, mtr_results, bandwidth_results
+        network_info, wifi_info, ieee_standard_info, performance_results, gateway_ping_results, mtr_results, bandwidth_results
     )
     HTMLExporter.save_to_mongo(formatted_results, db_handler)
 
