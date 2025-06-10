@@ -115,9 +115,9 @@
             }
         }
 
-        function createAreaChart(canvasId, labels, data, label, color = '#2563eb', options = {}) {
+        function createAreaChart(canvasId, timestamps, data, label, color = '#2563eb', options = {}) {
             console.log(`Creating chart for ${canvasId}:`);
-            console.log('Labels:', labels);
+            console.log('Timestamps:', timestamps);
             console.log('Data:', data);
 
             const ctx = document.getElementById(canvasId);
@@ -128,11 +128,15 @@
                 charts[canvasId].destroy();
             }
 
-            // Filter out null values while keeping the corresponding timestamps
-            const cleanData = labels.map((label, index) => ({
-                x: label,
-                y: data[index]
-            }));
+            // Create data points with x,y coordinates for proper alignment
+            const processedData = [];
+            for (let i = 0; i < timestamps.length; i++) {
+                const value = data && data[i] !== undefined && data[i] !== null ? data[i] : null;
+                processedData.push({
+                    x: i, // Use index for consistent spacing
+                    y: value
+                });
+            }
 
             const defaultOptions = {
                 responsive: true,
@@ -143,16 +147,37 @@
                     },
                     tooltip: {
                         mode: 'index',
-                        intersect: false
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const index = context[0].dataIndex;
+                                return timestamps[index];
+                            }
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        type: 'category',
+                        type: 'linear',
                         display: true,
                         title: {
                             display: true,
                             text: 'Time'
+                        },
+                        min: 0,
+                        max: timestamps.length - 1,
+                        ticks: {
+                            stepSize: Math.max(1, Math.floor(timestamps.length / 10)),
+                            callback: function(value, index) {
+                                const actualIndex = Math.round(value);
+                                if (actualIndex >= 0 && actualIndex < timestamps.length) {
+                                    return timestamps[actualIndex];
+                                }
+                                return '';
+                            }
+                        },
+                        grid: {
+                            display: true
                         }
                     },
                     y: {
@@ -161,12 +186,24 @@
                         title: {
                             display: true,
                             text: label
+                        },
+                        grid: {
+                            display: true
                         }
                     }
                 },
                 interaction: {
                     intersect: false,
                     mode: 'index'
+                },
+                elements: {
+                    point: {
+                        radius: 2,
+                        hoverRadius: 5
+                    },
+                    line: {
+                        tension: 0.4
+                    }
                 }
             };
 
@@ -185,17 +222,18 @@
             charts[canvasId] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels,
                     datasets: [{
-                        label,
-                        data: cleanData,
+                        label: label,
+                        data: processedData,
                         fill: true,
                         borderColor: color,
                         backgroundColor: `${color}33`,
                         tension: 0.4,
-                        pointRadius: 3,
-                        pointHoverRadius: 6,
-                        spanGaps: true
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        spanGaps: true,
+                        pointBackgroundColor: color,
+                        pointBorderColor: color
                     }]
                 },
                 options: mergedOptions
@@ -214,6 +252,10 @@
                 const date = new Date(timestamp);
                 return date.toLocaleTimeString();
             });
+
+            console.log('Formatted labels length:', formattedLabels.length);
+            console.log('Download speed data length:', metrics.download_speed?.length);
+            console.log('Upload speed data length:', metrics.upload_speed?.length);
 
             createAreaChart(
                 'gatewayLatencyChart', 
@@ -332,16 +374,15 @@
     </script>
     <script>
         document.getElementById('export-pdf').addEventListener('click', function() {
-            const element = document.body; // Exporta todo o conteúdo da página
+            const element = document.body;
             const opt = {
                 margin:       10,
-                filename:     'network_graphs.pdf', // Nome do arquivo PDF
+                filename:     'network_graphs.pdf',
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 3 },
+                html2canvas:  { scale: 0.8 },
                 jsPDF:        { unit: 'mm', format: 'a2', orientation: 'landscape' }
             };
     
-            // Gera o PDF
             html2pdf().set(opt).from(element).save();
         });
     </script>
