@@ -26,6 +26,22 @@ def dashboard():
 def area_charts():
     return render_template('graphs.html')
 
+@app.route('/api/ieee-standard', methods=['GET'])
+def get_ieee_standard():
+    """Get IEEE 802.11 standard information from the latest test"""
+    try:
+        last_result = collection.find_one({}, sort=[("timestamp", -1)])
+        if not last_result:
+            return jsonify({"error": "No data available"}), 404
+        
+        ieee_info = last_result.get('ieee_standard_info', {})
+        if not ieee_info:
+            return jsonify({"error": "IEEE standard information not available"}), 404
+            
+        return jsonify(ieee_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/ssids', methods=['GET'])
 def get_ssids():
     # Busca SSIDs únicos dos últimos 7 dias
@@ -175,6 +191,8 @@ def report():
     }
 
     wifi_info = last_result.get('wifi_info', {})
+    
+    ieee_standard_info = last_result.get('ieee_standard_info', {})
         
     performance_results = last_result.get('performance_results', {})
     
@@ -230,6 +248,7 @@ def report():
         'report.html',
         network_info=network_info,
         wifi_info=wifi_info,
+        ieee_standard_info=ieee_standard_info,
         performance_results=performance_results,
         connection_info=connection_info,
         mtr_results=mtr_results,
@@ -237,6 +256,27 @@ def report():
         dns_results=dns_results,
         report_timestamp=report_timestamp
     )
+    
+@app.route('/api/wifi/detailed', methods=['GET'])
+def get_detailed_wifi_info():
+    """Get detailed WiFi information including IEEE standards"""
+    try:
+        last_result = collection.find_one({}, sort=[("timestamp", -1)])
+        if not last_result:
+            return jsonify({"error": "No data available"}), 404
+        
+        wifi_info = last_result.get('wifi_info', {})
+        ieee_info = last_result.get('ieee_standard_info', {})
+        
+        # Combine WiFi info with IEEE standard information
+        detailed_info = {
+            **wifi_info,
+            'ieee_standards': ieee_info
+        }
+        
+        return jsonify(detailed_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
 @app.route('/api/report/last', methods=['GET'])
 def get_last_report():
@@ -275,6 +315,19 @@ def generate_insights(data):
                 'value': f'{current_rssi} dBm',
                 'threshold': '-50 dBm'
             })
+
+    # Verifica padrão IEEE
+    ieee_info = data.get('ieee_standard_info', {})
+    standard = ieee_info.get('Standard') or ieee_info.get('standard')
+
+    if standard and any(old in standard for old in ['802.11a', '802.11b', '802.11g', '802.11n']):
+        insights.append({
+            'type': 'info',
+            'metric': 'WiFi Adapter',
+            'message': f'Your device is using an outdated WiFi standard ({standard}). Consider upgrading your network adapter to benefit from higher speeds and stability.',
+            'value': standard,
+            'threshold': '802.11ac or newer'
+        })
 
     # Latência alta na Internet
     latency = data.get('internet', {}).get('latency', {})
@@ -330,6 +383,7 @@ def generate_insights(data):
             'value': '✅',
             'threshold': 'N/A'
         })
+        
 
     return insights
 
@@ -478,6 +532,10 @@ def get_summary():
         },
     }
     
+    last_result = collection.find_one({}, sort=[("timestamp", -1)])
+    summary['ieee_standard_info'] = last_result.get('ieee_standard_info', {})
+
+
     summary['insights'] = generate_insights(summary)
     
     return jsonify(summary)
