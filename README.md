@@ -1,5 +1,4 @@
-# mestrado
-Dissertação de mestrado - UTFPR
+# Dissertação de mestrado - UTFPR | Diego Fernando Maia
 
 # Network Analyzer
 
