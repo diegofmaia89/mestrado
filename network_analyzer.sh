@@ -2,7 +2,7 @@
 
 # Script para inicializar Banco de Dados e executar aplicações
 # Autor: Diego
-# Data: $(date +%Y-%m-%d)
+# Data: 2025-06
 
 echo "=== Iniciando Banco de Dados ==="
 sudo service mongod start
