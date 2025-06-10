@@ -313,9 +313,14 @@ th, td {
     font-size: 14px;
 }
 
+.status-excellent {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
 .status-good {
-    background-color: #dcfce7;
-    color: #166534;
+    background-color: #dbeafe;
+    color: #065f46;
 }
 
 .status-warning {
