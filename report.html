@@ -49,6 +49,28 @@
                     <div class="metric-value">{{ v }}</div>
                 </div>
             {% endfor %}
+            <!-- IEEE Standards as part of WLAN Information -->
+            {% if ieee_standard_info %}
+                {% for k, v in ieee_standard_info.items() %}
+                    <div class="metric">
+                        <div class="metric-title">{{ k.replace('_', ' ').title() }}</div>
+                        <div class="metric-value">
+                            {% if v is mapping %}
+                                <!-- If value is a dictionary, display its contents -->
+                                {% for sub_k, sub_v in v.items() %}
+                                    <strong>{{ sub_k }}:</strong> {{ sub_v }}<br>
+                                {% endfor %}
+                            {% elif v is iterable and v is not string %}
+                                <!-- If value is a list, display as comma-separated -->
+                                {{ v | join(', ') }}
+                            {% else %}
+                                <!-- Simple value -->
+                                {{ v }}
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
         </div>
     </div>
 
