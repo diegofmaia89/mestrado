@@ -181,11 +181,11 @@ sudo lsof -i :5000
 - Consultas otimizadas
 - Backup automático de informações
 
-### Informações adicionais
+## ℹ️ Informações adicionais
 - Dashboard será acessível em: http://localhost:5000
 - Certifique-se de ter uma interface de rede wireless ativa
 - Algumas funcionalidades podem precisar de privilégios sudo
-- O MongoDB precisa estar rodando para salvar os dados"
+- O MongoDB precisa estar rodando para salvar os dados
 
 
 ## 🔒 Segurança
