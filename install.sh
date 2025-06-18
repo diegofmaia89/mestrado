@@ -1,195 +1,182 @@
 #!/bin/bash
 
-# Network Analyzer Installer Script
-# Instala e configura o sistema completo de análise de rede
+# Script de instalação de dependências para Network Analyzer
+# Este script instala todas as ferramentas e pacotes necessários para executar
+# network_analyzer.py e dashboard.py
 
-set -e  # Exit on any error
+set -e  # Para o script se algum comando falhar
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+echo "==============================================="
+echo "Network Analyzer - Instalação de Dependências"
+echo "==============================================="
 
-# Project configuration
-PROJECT_NAME="network-analyzer"
-PROJECT_DIR="$HOME/$PROJECT_NAME"
-VENV_DIR="$PROJECT_DIR/venv"
-SERVICE_NAME="network-analyzer"
-
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Function to detect OS
-detect_os() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$NAME
-        DISTRO=$ID
+# Função para verificar se o comando foi executado com sucesso
+check_command() {
+    if [ $? -eq 0 ]; then
+        echo "✅ $1 instalado com sucesso"
     else
-        print_error "Cannot detect operating system"
-        exit 1
-    fi
-    print_status "Detected OS: $OS"
-}
-
-# Function to check if running as root
-check_root() {
-    if [ "$EUID" -eq 0 ]; then
-        print_error "Please do not run this script as root"
+        echo "❌ Erro ao instalar $1"
         exit 1
     fi
 }
 
-# Function to install system packages
-install_system_packages() {
-    print_status "Installing system packages..."
-    
-    case $DISTRO in
-        ubuntu|debian)
-            sudo apt update
-            sudo apt install -y \
-                python3 \
-                python3-pip \
-                python3-venv \
-                python3-dev \
-                mongodb \
-                wireless-tools \
-                net-tools \
-                iputils-ping \
-                mtr-tiny \
-                netcat-openbsd \
-                iw \
-                build-essential \
-                curl \
-                wget \
-                git
-            ;;
-        fedora|centos|rhel)
-            sudo dnf install -y \
-                python3 \
-                python3-pip \
-                python3-devel \
-                mongodb-server \
-                wireless-tools \
-                net-tools \
-                iputils \
-                mtr \
-                nc \
-                iw \
-                gcc \
-                gcc-c++ \
-                make \
-                curl \
-                wget \
-                git
-            ;;
-        arch)
-            sudo pacman -S --noconfirm \
-                python \
-                python-pip \
-                mongodb \
-                wireless_tools \
-                net-tools \
-                iputils \
-                mtr \
-                openbsd-netcat \
-                iw \
-                base-devel \
-                curl \
-                wget \
-                git
-            ;;
-        *)
-            print_error "Unsupported distribution: $DISTRO"
-            exit 1
-            ;;
-    esac
-    
-    print_success "System packages installed successfully"
-}
+# Atualizar repositórios do sistema
+echo "🔄 Atualizando repositórios do sistema..."
+sudo apt update
+check_command "Atualização dos repositórios"
 
-# Function to setup MongoDB
-setup_mongodb() {
-    print_status "Setting up MongoDB..."
+# Instalar Python3 e pip se não estiverem instalados
+echo "🐍 Verificando instalação do Python3..."
+if ! command -v python3 &> /dev/null; then
+    sudo apt install -y python3 python3-pip
+    check_command "Python3 e pip"
+else
+    echo "✅ Python3 já está instalado"
+fi
+
+# Instalar ferramentas de rede necessárias
+echo "🌐 Instalando ferramentas de rede..."
+sudo apt install -y \
+    iputils-ping \
+    iproute2 \
+    wireless-tools \
+    iw \
+    net-tools \
+    netcat-openbsd \
+    mtr-tiny \
+    dnsutils
+check_command "Ferramentas de rede"
+
+# Instalar MongoDB
+echo "🗄️ Instalando MongoDB..."
+if ! command -v mongod &> /dev/null; then
+    # Importar chave pública do MongoDB
+    curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
     
-    case $DISTRO in
-        ubuntu|debian)
-            sudo systemctl start mongod
-            sudo systemctl enable mongod
-            ;;
-        fedora|centos|rhel)
-            sudo systemctl start mongod
-            sudo systemctl enable mongod
-            ;;
-        arch)
-            sudo systemctl start mongodb
-            sudo systemctl enable mongodb
-            ;;
-    esac
+    # Adicionar repositório do MongoDB
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
     
-    # Wait for MongoDB to start
-    sleep 5
+    # Atualizar repositórios e instalar MongoDB
+    sudo apt update
+    sudo apt install -y mongodb-org
     
-    # Test MongoDB connection
-    if mongo --eval "db.adminCommand('ismaster')" >/dev/null 2>&1; then
-        print_success "MongoDB is running successfully"
+    # Iniciar e habilitar MongoDB
+    sudo systemctl start mongod
+    sudo systemctl enable mongod
+    
+    check_command "MongoDB"
+else
+    echo "✅ MongoDB já está instalado"
+    # Garantir que o MongoDB está rodando
+    sudo systemctl start mongod
+fi
+
+# Instalar dependências Python
+echo "📦 Instalando dependências Python..."
+
+# Criar arquivo requirements.txt temporário
+cat > /tmp/requirements.txt << EOF
+pymongo>=4.0.0
+requests>=2.25.0
+flask>=2.0.0
+numpy>=1.21.0
+EOF
+
+# Instalar dependências Python
+pip3 install -r /tmp/requirements.txt
+check_command "Dependências Python"
+
+# Remover arquivo temporário
+rm /tmp/requirements.txt
+
+# Verificar se todas as ferramentas estão funcionando
+echo "🔍 Verificando instalações..."
+
+# Verificar ferramentas de rede
+commands_to_check=(
+    "ping"
+    "ip"
+    "iwconfig"
+    "iw"
+    "nc"
+    "mtr"
+    "nslookup"
+)
+
+for cmd in "${commands_to_check[@]}"; do
+    if command -v $cmd &> /dev/null; then
+        echo "✅ $cmd disponível"
     else
-        print_warning "MongoDB may not be running properly. Please check manually."
+        echo "❌ $cmd não encontrado"
     fi
-}
+done
 
-# Function to create project directory structure
-create_project_structure() {
-    print_status "Creating project directory structure..."
-    
-    mkdir -p "$PROJECT_DIR"
-    cd "$PROJECT_DIR"
-    
-    # Create subdirectories
-    mkdir -p templates static logs
-    
-    print_success "Project structure created at $PROJECT_DIR"
-}
+# Verificar Python modules
+echo "🐍 Verificando módulos Python..."
+python3 -c "
+import sys
+modules = ['pymongo', 'requests', 'flask', 'numpy', 'subprocess', 're', 'os', 'platform', 'statistics', 'datetime', 'threading', 'time']
+missing = []
+for module in modules:
+    try:
+        __import__(module)
+        print(f'✅ {module} disponível')
+    except ImportError:
+        missing.append(module)
+        print(f'❌ {module} não encontrado')
 
-# Function to setup Python virtual environment
-setup_python_env() {
-    print_status "Setting up Python virtual environment..."
-    
-    cd "$PROJECT_DIR"
-    python3 -m venv venv
-    source venv/bin/activate
-    
-    # Upgrade pip
-    pip install --upgrade pip
-    
-    # Install required Python packages
-    pip install \
-        flask \
-        pymongo \
-        numpy \
-        requests \
-        gunicorn
-    
-    print_success "Python virtual environment setup complete"
-}
+if missing:
+    print(f'Módulos faltando: {missing}')
+    sys.exit(1)
+else:
+    print('✅ Todos os módulos Python estão disponíveis')
+"
+
+# Verificar status do MongoDB
+echo "🗄️ Verificando status do MongoDB..."
+if sudo systemctl is-active --quiet mongod; then
+    echo "✅ MongoDB está rodando"
+else
+    echo "⚠️ MongoDB não está rodando. Tentando iniciar..."
+    sudo systemctl start mongod
+    if sudo systemctl is-active --quiet mongod; then
+        echo "✅ MongoDB iniciado com sucesso"
+    else
+        echo "❌ Erro ao iniciar MongoDB"
+    fi
+fi
+
+# Criar diretório templates se não existir (necessário para o dashboard)
+echo "📁 Criando diretório templates..."
+mkdir -p templates
+echo "✅ Diretório templates criado"
+
+# Verificar permissões de rede (algumas ferramentas podem precisar de sudo)
+echo "🔐 Verificando permissões..."
+if [ "$EUID" -eq 0 ]; then
+    echo "⚠️ Script executado como root. Algumas funcionalidades de rede podem funcionar melhor."
+else
+    echo "ℹ️ Script executado como usuário normal. Algumas funcionalidades podem precisar de sudo."
+fi
+
+echo ""
+echo "=========================================="
+echo "✅ INSTALAÇÃO CONCLUÍDA COM SUCESSO!"
+echo "=========================================="
+echo ""
+echo "📋 Resumo das instalações:"
+echo "• Ferramentas de rede: ping, ip, iwconfig, iw, nc, mtr, nslookup"
+echo "• MongoDB: Instalado e configurado"
+echo "• Python: pymongo, requests, flask, numpy"
+echo ""
+echo "🚀 Para executar os scripts:"
+echo "• Network Analyzer: python3 network_analyzer.py"
+echo "• Dashboard: python3 dashboard.py"
+echo ""
+echo "🌐 Dashboard será acessível em: http://localhost:5000"
+echo ""
+echo "⚠️ IMPORTANTE:"
+echo "• Certifique-se de ter uma interface de rede wireless ativa"
+echo "• Algumas funcionalidades podem precisar de privilégios sudo"
+echo "• O MongoDB precisa estar rodando para salvar os dados"
+echo ""
